@@ -1,4 +1,3 @@
-
 import sys
 import os
 import os.path as op
@@ -8,13 +7,12 @@ from shapely.geometry import Point, Polygon, LineString, MultiLineString
 sys.path.insert(0, "/opt/src/flatfeature")
 from flatfeature import Flat
 
+NCPU = 8
 from processing import Pool
-pool = Pool(6)
+pool = Pool(NCPU)
 
 
-DEBUG = False
 EXPON = 0.90
-
 
 def get_feats_in_space(locs, ichr, bpmin, bpmax, flat):
     """ locs == [start, stop]
@@ -259,21 +257,38 @@ def remove_crossing_cnss(cnss, qgene, sgene):
     return [c.cns for c in cns_shapes if not c.do_remove]
         
 
-def get_line(fh, seen):
+def get_pair(pair_file, fmt, seen={}):
     """ read a line and make sure it's unique handles
     dag, cluster, and pair formats."""
-    line = fh.readline()
-    while True:
-        if not line: return None
-        if line[0] == "#": seen.clear(); line = fh.readline(); continue
+    fh = open(pair_file)
+    for line in open(pair_file):
+        if line[0] == "#": seen.clear(); continue
         line = line.split("\t")
-        if len(line) == 1:
-            line = line.split(",")
-            assert len(line) == 2, "dont know how to handle %s" % line
-        key = tuple(line[:-1] if len(line) >= 5 else tuple(line))
-        if key in seen: line = fh.readline(); continue
-        seen[tuple(line[:7])] = True
-        return line
+        if fmt == 'dag':
+            assert len(line) > 5, line
+            key = tuple(line[:-1])
+            pair = line[1], line[5]
+        elif fmt == 'cluster':
+            assert len(line) == 5, line
+            key = tuple(line[:-1])
+            pair = line[1], line[3]
+        elif fmt == 'pairs':
+            if len(line) == 1:
+                line = line.split(",")
+            assert len(line) >= 2, "dont know how to handle %s" % line
+            pair = line[0], line[1]
+            key = tuple(line)
+
+        if key in seen:
+            continue
+        else:
+            seen[tuple(key)] = True
+            if isinstance(pair[0], (int, long)) and \
+                           isinstance(pair[1], (int, long)):
+                   yield int(pair[0]), int(pair[1])
+
+            assert len(pair) == 2, (pair, line)
+            yield pair
 
 
 def get_masked_fastas(flat):
@@ -297,7 +312,7 @@ def get_masked_fastas(flat):
         fh.close()
     return fastas
 
-def main(qflat, sflat, pairs, pad, pair_fmt):
+def main(qflat, sflat, pairs_file, pad, pair_fmt):
     """main runner for finding cnss"""
 
      
@@ -307,34 +322,30 @@ def main(qflat, sflat, pairs, pad, pair_fmt):
             | grep -v 'WARNING' | grep -v 'ERROR' "
 
     fcnss = sys.stdout
-    print >> fcnss, "#qseqid,qname,sseqid,sname,[qstart,qend,sstart,send...]"
+    print >> fcnss, "#qseqid,qaccn,sseqid,saccn,[qstart,qend,sstart,send...]"
 
     qfastas = get_masked_fastas(qflat)
     sfastas = get_masked_fastas(sflat)
 
-    seen = {}
-
-    pairsfh = open(pairs)
-    lines = [True]
-    while any(lines):
-        lines = [get_line(pairsfh, seen) for i in range(6)]
+    pairs = [True]
+    get_pair_gen = get_pair(pairs_file, pair_fmt)
+    while any(pairs):
+        pairs = [get_pair_gen.next() for i in range(NCPU)]
 
         # this helps in parallelizing.
-        def get_cmd(line):
-            if line is None: return None
+        def get_cmd(pair):
+            if pair is None: return None
             if pair_fmt == 'dag':
-                qfeat, sfeat = qflat.d[line[1]], sflat.d[line[5]]
+                qfeat, sfeat = qflat.d[pair[0]], sflat.d[pair[1]]
             elif pair_fmt == 'cluster':
                 # qseqid, qidx, sseqid, sidx
-                qfeat, sfeat = qflat[int(line[1])], sflat[int(line[3])]
+                qfeat, sfeat = qflat[pair[0]], sflat[pair[1]]
             elif pair_fmt == 'pair':
-                qq, ss = line[0], line[1]
-                if qq.isdigit() and ss.isdigit():
-                    qfeat, sfeat = qflat[int(qq)], sflat[int(ss)]
+                qq, ss = pair
+                if isinstance(qq, int) and isinstance(ss, int):
+                    qfeat, sfeat = qflat[qq], sflat[ss]
                 else:
                     qfeat, sfeat = qflat.d[qq], sflat.d[ss]
-
-
 
             qfasta = qfastas[qfeat['seqid']]
             sfasta = sfastas[sfeat['seqid']]
@@ -349,7 +360,7 @@ def main(qflat, sflat, pairs, pad, pair_fmt):
                                 sstart=sstart, qstop=qstop, sstop=sstop)
             return cmd, qfeat, sfeat
 
-        cmds = [c for c in map(get_cmd, [l for l in lines if l]) if c]
+        cmds = [c for c in map(get_cmd, [l for l in pairs if l]) if c]
         results = (r for r in pool.map(commands.getoutput, [c[0] for c in cmds]))
         #results = (r for r in map(commands.getoutput, [c[0] for c in cmds]))
 
