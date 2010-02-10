@@ -5,19 +5,14 @@ import os.path as op
 import numpy as np
 import commands
 from shapely.geometry import Point, Polygon, LineString, MultiLineString
-#import matplotlib; matplotlib.use('Agg')
-import pylab
 sys.path.insert(0, "/opt/src/flatfeature")
 from flatfeature import Flat
 
-"""
 from processing import Pool
-pool = Pool(4)
-"""
+pool = Pool(6)
+
 
 PAD = 12000 # how far around each gene to look for cnss
-PLOT = False
-SAVE = False # save the png's to a file. and dont show the gtk plot...
 DEBUG = False
 EXPON = 0.90
 
@@ -80,25 +75,6 @@ def parse_blast(blast_str, orient, qfeat, sfeat, qcdss, scdss, qflat, sflat):
 
     genespace_poly = Polygon(zip(xall, yall))
     
-    if PLOT: # plot the features.
-        pylab.close()
-        f = pylab.subplot(211)
-        pylab.plot(qgene, sgene, lw=4)
-        ym = yall.min() + 10
-        xm = xall.min() + 10
-        for f in feats_nearby['q']:
-            pylab.plot([f[0], f[1]], [ym, ym], lw=6, c='#777777')
-        for qcds in qcdss: # plot the cdss.
-            pylab.plot(qcds, [ym, ym], lw=6, c='#7777ff')
-
-        for f in feats_nearby['s']:
-            pylab.plot([xm, xm], [f[0], f[1]], lw=6, c='#777777')
-        for scds in scdss: # plot the cdss.
-            pylab.plot([xm, xm], scds, lw=6, c='#7777ff')
-
-        # plot the bowtie.
-        pylab.plot(xall, yall)
-
     for sub in ('q', 's'):
         if len(feats_nearby[sub]) !=0:
             feats_nearby[sub] = MultiLineString([[(0, c0),(0, c1)] for c0, c1, fname in feats_nearby[sub]])
@@ -118,9 +94,6 @@ def parse_blast(blast_str, orient, qfeat, sfeat, qcdss, scdss, qflat, sflat):
 
         xx = locs[:2]
         yy = locs[2:4]
-        if PLOT: # PLOT any CNS
-            col = locs[2] > locs[3] and 'r' or 'g'
-            pylab.plot(xx, yy, c=col, linestyle='--')
         
         # get rid of stuff on the wrong strand
         if slope == 1 and locs[2] > locs[3]: continue
@@ -168,17 +141,9 @@ def parse_blast(blast_str, orient, qfeat, sfeat, qcdss, scdss, qflat, sflat):
         if not genespace_poly.contains(LineString(zip(xx, yy))): continue
         cnss.update((locs,))
 
-    # plot diagonal line.
-    if PLOT:
-        x = np.linspace(qgene[0] - PAD, qgene[1] + PAD, 30)
-        y = slope * x + intercept
-        pylab.plot(x, y, 'b')
-        pylab.subplot(211)
-        pylab.title("%i intronic (non-self) cnss removed" % (intronic_removed,))
-
     # cant cross with < 2 cnss.
     # get rid of the eval, bitscore stuff.
-    if len(cnss) < 2: return plot_border([l[:4] for l in cnss])
+    if len(cnss) < 2: return [l[:4] for l in cnss]
 
     cnss = list(cnss)
     # need to flip to negative so the overlapping stuff still works.
@@ -195,16 +160,6 @@ def parse_blast(blast_str, orient, qfeat, sfeat, qcdss, scdss, qflat, sflat):
     cnss = [l[:4] for l in remove_crossing_cnss(cnss, qgene, sgene)]
     if orient == -1:
         cnss = [(c[0], c[1], -c[2], -c[3]) for c in cnss]
-    return plot_border(cnss)
-
-def plot_border(cnss):
-    if not PLOT: return cnss
-    pylab.subplot(211)
-    for x0, x1, y0, y1 in cnss:
-        col = -1 if y0 > y1 else 1 
-        # plt a ellipse around the real CNSs.
-        border = np.array(LineString([(x0, y0), (x1, y1)]).buffer(800, 10).exterior.coords)
-        pylab.plot(border[:, 0], border[:, 1], linestyle='-', linewidth=1, c='k')
     return cnss
 
 
@@ -232,11 +187,6 @@ def remove_overlapping_cnss(cnss):
 def remove_crossing_cnss(cnss, qgene, sgene):
     diff = qgene[0] - sgene[0] # adjust subject so it's in same range as query
     cns_shapes = [LineString([((c[0] + c[1])/2., 0 ), ((c[2] + c[3])/2. + diff, 1000)]) for c in cnss]
-    if PLOT:
-        pylab.subplot(212)
-        for csi in cns_shapes:
-            arr = pylab.array(csi)
-            pylab.plot(arr[:, 0], arr[:, 1], 'c', lw=8)
 
     overlapping = len(cnss)
     cnss = remove_overlapping_cnss(cnss)
@@ -254,9 +204,6 @@ def remove_crossing_cnss(cnss, qgene, sgene):
 
 
     for csi in cns_shapes:
-        if PLOT:
-            arr = pylab.array(csi)
-            pylab.plot(arr[:, 0], arr[:, 1], 'y', lw=6)
         for csj in cns_shapes: 
             if csi == csj: continue
             if csi.crosses(csj):
@@ -281,13 +228,6 @@ def remove_crossing_cnss(cnss, qgene, sgene):
                 any_removed = True
                 nremoved += 1
                 del cns_shapes[i]
-                if PLOT:
-                    pylab.subplot(211)
-                    pylab.plot([cs.coords[0][0]], [cs.coords[1][0] - diff], color='k', marker='o', markersize=3)
-                    pylab.subplot(212)
-                    arr = pylab.array(cs)
-                    pylab.plot(arr[:, 0], arr[:, 1], color='k', ls='-.', lw=4)
-
                 break
 
 
@@ -300,9 +240,6 @@ def remove_crossing_cnss(cnss, qgene, sgene):
             if csj.do_remove or len(csj.cross_list) == 0: continue
             if csi.do_remove or len(csi.cross_list) == 0: continue
             if csi.crosses(csj):
-                if PLOT:
-                    pt = csi.intersection(csj)
-                    pylab.plot([pt.x], [pt.y], 'ro')
 
                 # access the assocated cns.
                 # evalue: less is better       bitscore: more is better
@@ -318,11 +255,6 @@ def remove_crossing_cnss(cnss, qgene, sgene):
     for c in cns_shapes:
         if not c.do_remove: continue
         nremoved += 1
-        if PLOT:
-            arr = pylab.array(c)
-            pylab.plot(arr[:, 0], arr[:, 1], color='b', ls='-.', lw=4)
-    if PLOT:
-        pylab.title("removed %i crossing and %i overlapping cnss" % (nremoved, overlapping ))
     return [c.cns for c in cns_shapes if not c.do_remove]
         
 
@@ -370,6 +302,7 @@ def main(qflat, sflat, pairs, qdsid, sdsid):
     # save the command used.
 
     fcnss = sys.stdout
+    print >> fcnss, "#qseqid,qname,sseqid,sname,[qstart,qend,sstart,send...]"
 
     qfastas = get_masked_fastas(qflat)
     sfastas = get_masked_fastas(sflat)
@@ -385,7 +318,7 @@ def main(qflat, sflat, pairs, qdsid, sdsid):
     pairsfh = open(pairs)
     lines = [True]
     while any(lines):
-        lines = [get_line(pairsfh, seen) for i in range(7)]
+        lines = [get_line(pairsfh, seen) for i in range(6)]
 
         # this helps in parallelizing.
         def get_cmd(line):
@@ -406,8 +339,8 @@ def main(qflat, sflat, pairs, qdsid, sdsid):
             return cmd, qfeat, sfeat
 
         cmds = [c for c in map(get_cmd, [l for l in lines if l]) if c]
-        #results = (r for r in pool.map(commands.getoutput, [c[0] for c in cmds]))
-        results = (r for r in map(commands.getoutput, [c[0] for c in cmds]))
+        results = (r for r in pool.map(commands.getoutput, [c[0] for c in cmds]))
+        #results = (r for r in map(commands.getoutput, [c[0] for c in cmds]))
 
         for res, (cmd, qfeat, sfeat) in zip(results, cmds):
             if not res.strip(): continue
@@ -418,31 +351,14 @@ def main(qflat, sflat, pairs, qdsid, sdsid):
             scds = sfeat['locs']
 
             cnss = parse_blast(res, orient, qfeat, sfeat, qcds, scds, qflat, sflat)
-            print >>sys.stderr, "(%i)" % len(cnss), cnss
+            print >>sys.stderr, "(%i)" % len(cnss)
             if len(cnss) == 0: continue
 
             qname, sname = qfeat['accn'], sfeat['accn']
-            print >> fcnss, "%s,%s,%s,%s," % (qname, sname, str(qfeat['seqid']),\
-                    str(sfeat['seqid'])) + ",".join(map(lambda l: ",".join(map(str,l)),cnss))
-            name = "%s_%s" % (qname, sname)
-
-             
-            tlink = (link % locals()) + (qfeat['strand'] == '-' and "&rev1=1" or '&') + (sfeat['strand'] == '-' and '&rev2=1' or '&')
-            #print >> flinks, "<br/><a href='%s'>%s</a><br/>" % (tlink, name + "(" + str(len(cnss)) + ")" )
-            #cnsplot(qname, sname, flinks, cnss, name)
+            print >> fcnss, "%s,%s,%s,%s,%s" % (qfeat['seqid'], qname, sfeat['seqid'], sname,
+                             ",".join(map(lambda l: ",".join(map(str,l)),cnss)))
 
     return None 
-
-def cnsplot(qname, sname, flinks, cnss, name):
-    if not PLOT: return
-    pylab.figtext(0.56, 0.86, qname + ' vs ' + sname)
-    pylab.figtext(0.14, 0.86, "%s total cnss found" % len(cnss))
-    if not SAVE:
-        pylab.show()
-    else:
-        pylab.savefig("/var/www/ms_tmp/rice_sorghum/%s.png" % name)
-        print >>flinks, "<a href='/ms_tmp/rice_sorghum/%s.png'>bowtie: %s</a><br/>" % (name, name)
-
 
 if __name__ == "__main__":
     import optparse
@@ -464,5 +380,3 @@ if __name__ == "__main__":
     sflat = Flat(options.sflat, options.sfasta); sflat.fill_dict()
 
     main(qflat, sflat, options.pairs, options.qdsid, options.sdsid)
-
-
