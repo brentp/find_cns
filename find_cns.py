@@ -12,7 +12,6 @@ from processing import Pool
 pool = Pool(6)
 
 
-PAD = 12000 # how far around each gene to look for cnss
 DEBUG = False
 EXPON = 0.90
 
@@ -29,12 +28,14 @@ def get_feats_in_space(locs, ichr, bpmin, bpmax, flat):
     return [(f['start'], f['end'], f['accn']) for f in feats]
     
 
-def parse_blast(blast_str, orient, qfeat, sfeat, qcdss, scdss, qflat, sflat):
+def parse_blast(blast_str, orient, qfeat, sfeat, qflat, sflat, pad):
     blast = []
     slope = orient
 
     qgene = [qfeat['start'], qfeat['end']]
     sgene = [sfeat['start'], sfeat['end']]
+    qcds = qfeat['locs']
+    scds = sfeat['locs']
 
 
     sgene = sgene[::slope]
@@ -50,7 +51,7 @@ def parse_blast(blast_str, orient, qfeat, sfeat, qcdss, scdss, qflat, sflat):
     rngx = qgene[1] - qgene[0]
     rngy = abs(sgene[1] - sgene[0])
 
-    x = np.linspace(qgene[0] - PAD, qgene[1] + PAD, 50)
+    x = np.linspace(qgene[0] - pad, qgene[1] + pad, 50)
     y = slope * x + intercept
 
 
@@ -291,7 +292,7 @@ def get_masked_fastas(flat):
         fh.close()
     return fastas
 
-def main(qflat, sflat, pairs, qdsid, sdsid):
+def main(qflat, sflat, pairs, qdsid, sdsid, pad):
     """main runner for finding cnss"""
 
      
@@ -309,8 +310,8 @@ def main(qflat, sflat, pairs, qdsid, sdsid):
 
     link = "http://toxic.berkeley.edu/CoGe/GEvo.pl?prog=blastn;" + \
            "accn1=%(qname)s;dsid1=" + qdsid + ";accn2=%(sname)s;dsid2=" + sdsid + \
-           ";num_seqs=2&autogo=1&drup1=" + str(PAD) + '&drdown1=' + \
-            str(PAD) + '&drup2=' + str(PAD) + '&drdown2=' + str(PAD) +\
+           ";num_seqs=2&autogo=1&drup1=" + str(pad) + '&drdown1=' + \
+            str(pad) + '&drup2=' + str(pad) + '&drdown2=' + str(pad) +\
             ";mask1=cds;mask2=cds"
 
     seen = {}
@@ -328,11 +329,11 @@ def main(qflat, sflat, pairs, qdsid, sdsid):
             qfasta = qfastas[qfeat['seqid']]
             sfasta = sfastas[sfeat['seqid']]
 
-            qstart, qstop = max(qfeat['start'] - PAD, 1), qfeat['end'] + PAD
-            sstart, sstop = max(sfeat['start'] - PAD, 1), sfeat['end'] + PAD
+            qstart, qstop = max(qfeat['start'] - pad, 1), qfeat['end'] + pad
+            sstart, sstop = max(sfeat['start'] - pad, 1), sfeat['end'] + pad
 
-            assert qstop - qstart > 2 * PAD or qstart == 1, (qstop, qstart)
-            assert sstop - sstart > 2 * PAD or sstart == 1, (sstop, sstart)
+            assert qstop - qstart > 2 * pad or qstart == 1, (qstop, qstart)
+            assert sstop - sstart > 2 * pad or sstart == 1, (sstop, sstart)
 
             cmd = bl2seq % dict(qfasta=qfasta, sfasta=sfasta, qstart=qstart,
                                 sstart=sstart, qstop=qstop, sstop=sstop)
@@ -347,10 +348,7 @@ def main(qflat, sflat, pairs, qdsid, sdsid):
             print >>sys.stderr,  "%s %s" % (qfeat["accn"], sfeat['accn']),
             orient = qfeat['strand'] == sfeat['strand'] and 1 or -1
 
-            qcds = qfeat['locs']
-            scds = sfeat['locs']
-
-            cnss = parse_blast(res, orient, qfeat, sfeat, qcds, scds, qflat, sflat)
+            cnss = parse_blast(res, orient, qfeat, sfeat, qflat, sflat, pad)
             print >>sys.stderr, "(%i)" % len(cnss)
             if len(cnss) == 0: continue
 
@@ -370,6 +368,8 @@ if __name__ == "__main__":
     parser.add_option("-p", dest="pairs", help="the pairs file. output from dagchainer")
     parser.add_option("--qdsid", dest="qdsid", help="query dataset id", default="")
     parser.add_option("--sdsid", dest="sdsid", help="subject dataset id", default="")
+    parser.add_option("--pad", dest="pad", type='int', default=12000,
+                      help="how far from the end of each gene to look for cnss")
     (options, _) = parser.parse_args()
 
 
@@ -379,4 +379,4 @@ if __name__ == "__main__":
     qflat = Flat(options.qflat, options.qfasta); qflat.fill_dict()
     sflat = Flat(options.sflat, options.sfasta); sflat.fill_dict()
 
-    main(qflat, sflat, options.pairs, options.qdsid, options.sdsid)
+    main(qflat, sflat, options.pairs, options.qdsid, options.sdsid, options.pad)
