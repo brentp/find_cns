@@ -260,13 +260,18 @@ def remove_crossing_cnss(cnss, qgene, sgene):
         
 
 def get_line(fh, seen):
-    """ read a line and make sure it's unique """
+    """ read a line and make sure it's unique handles
+    dag, cluster, and pair formats."""
     line = fh.readline()
     while True:
         if not line: return None
         if line[0] == "#": seen.clear(); line = fh.readline(); continue
         line = line.split("\t")
-        if tuple(line[:7]) in seen: line = fh.readline(); continue
+        if len(line) == 1:
+            line = line.split(",")
+            assert len(line) == 2, "dont know how to handle %s" % line
+        key = tuple(line[:-1] if len(line) >= 5 else tuple(line))
+        if key in seen: line = fh.readline(); continue
         seen[tuple(line[:7])] = True
         return line
 
@@ -292,7 +297,7 @@ def get_masked_fastas(flat):
         fh.close()
     return fastas
 
-def main(qflat, sflat, pairs, qdsid, sdsid, pad):
+def main(qflat, sflat, pairs, pad, pair_fmt):
     """main runner for finding cnss"""
 
      
@@ -300,19 +305,12 @@ def main(qflat, sflat, pairs, qdsid, sdsid, pad):
            " -Y 812045000 -d 26195 -e 2.11 -i %(qfasta)s -j %(sfasta)s \
               -I %(qstart)d,%(qstop)d -J %(sstart)d,%(sstop)d | grep -v '#' \
             | grep -v 'WARNING' | grep -v 'ERROR' "
-    # save the command used.
 
     fcnss = sys.stdout
     print >> fcnss, "#qseqid,qname,sseqid,sname,[qstart,qend,sstart,send...]"
 
     qfastas = get_masked_fastas(qflat)
     sfastas = get_masked_fastas(sflat)
-
-    link = "http://toxic.berkeley.edu/CoGe/GEvo.pl?prog=blastn;" + \
-           "accn1=%(qname)s;dsid1=" + qdsid + ";accn2=%(sname)s;dsid2=" + sdsid + \
-           ";num_seqs=2&autogo=1&drup1=" + str(pad) + '&drdown1=' + \
-            str(pad) + '&drup2=' + str(pad) + '&drdown2=' + str(pad) +\
-            ";mask1=cds;mask2=cds"
 
     seen = {}
 
@@ -324,8 +322,20 @@ def main(qflat, sflat, pairs, qdsid, sdsid, pad):
         # this helps in parallelizing.
         def get_cmd(line):
             if line is None: return None
+            if pair_fmt == 'dag':
+                qfeat, sfeat = qflat.d[line[1]], sflat.d[line[5]]
+            elif pair_fmt == 'cluster':
+                # qseqid, qidx, sseqid, sidx
+                qfeat, sfeat = qflat[int(line[1])], sflat[int(line[3])]
+            elif pair_fmt == 'pair':
+                qq, ss = line[0], line[1]
+                if qq.isdigit() and ss.isdigit():
+                    qfeat, sfeat = qflat[int(qq)], sflat[int(ss)]
+                else:
+                    qfeat, sfeat = qflat.d[qq], sflat.d[ss]
 
-            qfeat, sfeat = qflat.d[line[1]], sflat.d[line[5]]
+
+
             qfasta = qfastas[qfeat['seqid']]
             sfasta = sfastas[sfeat['seqid']]
 
@@ -360,14 +370,16 @@ def main(qflat, sflat, pairs, qdsid, sdsid, pad):
 
 if __name__ == "__main__":
     import optparse
-    parser = optparse.OptionParser()
+    parser = optparse.OptionParser("usage: %prog [options] ")
     parser.add_option("-q", dest="qfasta", help="path to genomic query fasta")
     parser.add_option("--qflat", dest="qflat", help="query flat file")
     parser.add_option("-s", dest="sfasta", help="path to genomic subject fasta")
     parser.add_option("--sflat", dest="sflat", help="subject flat file")
     parser.add_option("-p", dest="pairs", help="the pairs file. output from dagchainer")
-    parser.add_option("--qdsid", dest="qdsid", help="query dataset id", default="")
-    parser.add_option("--sdsid", dest="sdsid", help="subject dataset id", default="")
+    choices = ("dag", "cluster", "pair")
+    parser.add_option("--pair_fmt", dest="pair_fmt", default='dag',
+                      help="format of the pairs, one of: %s" % str(choices),
+                      choices=choices)
     parser.add_option("--pad", dest="pad", type='int', default=12000,
                       help="how far from the end of each gene to look for cnss")
     (options, _) = parser.parse_args()
@@ -379,4 +391,4 @@ if __name__ == "__main__":
     qflat = Flat(options.qflat, options.qfasta); qflat.fill_dict()
     sflat = Flat(options.sflat, options.sfasta); sflat.fill_dict()
 
-    main(qflat, sflat, options.pairs, options.qdsid, options.sdsid, options.pad)
+    main(qflat, sflat, options.pairs, options.pad, options.pair_fmt)
