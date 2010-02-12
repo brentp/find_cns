@@ -165,7 +165,7 @@ def make_pair_maps(pair_file, fmt):
     """
     qmap = collections.defaultdict(list) # key is query, value is a list of subject hits
     smap = collections.defaultdict(list)
-    for pair in get_pair(pair_file, fmt, seen={}):
+    for pair in get_pair(pair_file, fmt):
         if pair is None: break
         (qname, sname) = pair
         qmap[qname].append(sname)
