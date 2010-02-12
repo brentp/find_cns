@@ -2,7 +2,7 @@ import collections
 from flatfeature import Flat
 import sys
 import os
-from md5 import md5
+from hashlib import md5
 sys.path.insert(0, os.path.dirname(__file__))
 from find_cns import get_pair
 

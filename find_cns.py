@@ -328,9 +328,14 @@ def main(qflat, sflat, pairs_file, pad, pair_fmt):
     sfastas = get_masked_fastas(sflat)
 
     pairs = [True]
-    get_pair_gen = get_pair(pairs_file, pair_fmt)
+    _get_pair_gen = get_pair(pairs_file, pair_fmt)
+    # need this for parallization stuff.
+    def get_pair_gen():
+        try: return _get_pair_gen.next()
+        except StopIteration: return None
+
     while any(pairs):
-        pairs = [get_pair_gen.next() for i in range(NCPU)]
+        pairs = [get_pair_gen() for i in range(NCPU)]
 
         # this helps in parallelizing.
         def get_cmd(pair):
