@@ -2,17 +2,15 @@ import collections
 from flatfeature import Flat
 import sys
 import os
-from hashlib import md5
 sys.path.insert(0, os.path.dirname(__file__))
 from find_cns import get_pair
 
-def cns_hash(cns_dict):
+def cns_id(cns_dict):
     c = cns_dict
 
-    return md5("|".join(map(str,
+    return "|".join(map(str,
            (c['qaccn'], c['qchr'], c['qstart'], c['qstop'], c['qstrand'],
-            c['saccn'], c['schr'], c['sstart'], c['sstop'], c['sstrand'],
-           )))).hexdigest()
+            c['saccn'], c['schr'], c['sstart'], c['sstop'], c['sstrand'])))
 
 
 def get_cns_dict(cnsfile):
@@ -136,13 +134,13 @@ def main(cnsfile, qflat_file, sflat_file, pairsfile, pairs_fmt):
     qpair_map, spair_map = make_pair_maps(pairsfile, pairs_fmt)
     out = sys.stdout
 
-    fmt = "%(cns_hash)s,%(qaccn)s,%(qchr)s,%(qstart)i,%(qstop)i,%(qstrand)s," + \
+    fmt = "%(cns_id)s,%(qaccn)s,%(qchr)s,%(qstart)i,%(qstop)i,%(qstrand)s," + \
                        "%(saccn)s,%(schr)s,%(sstart)i,%(sstop)i,%(sstrand)s"
 
     print >>out, "#" + fmt.replace("%(","").replace(")s","").replace(")i","")
     for cns, qfeat, sfeat in assign(cnsdict, qflat, sflat, qpair_map, spair_map):
         d = cns_fmt_dict(cns, qfeat, sfeat)
-        d['cns_hash'] = cns_hash(d)
+        d['cns_id'] = cns_id(d)
         if d['sstop'] < d['sstart']:
             d['sstop'], d['sstart'] = d['sstart'], d['sstop']
 
@@ -152,9 +150,9 @@ def main(cnsfile, qflat_file, sflat_file, pairsfile, pairs_fmt):
 def write_gff(d, qcns_gff, scns_gff):
 
     qfmt = \
-        "%(qchr)s\t.\tcns\t%(qstart)i\t%(qstop)i\t.\t%(qstrand)s\t.\tID=q__%(cns_hash)s;qaccn=%(qaccn)s;saccn=%(saccn)s"
+        "%(qchr)s\t.\tcns\t%(qstart)i\t%(qstop)i\t.\t%(qstrand)s\t.\tID=q__%(cns_id)s;qaccn=%(qaccn)s;saccn=%(saccn)s"
     sfmt = \
-        "%(schr)s\t.\tcns\t%(sstart)i\t%(sstop)i\t.\t%(sstrand)s\t.\tID=s__%(cns_hash)s;qaccn=%(qaccn)s;saccn=%(saccn)s"
+        "%(schr)s\t.\tcns\t%(sstart)i\t%(sstop)i\t.\t%(sstrand)s\t.\tID=s__%(cns_id)s;qaccn=%(qaccn)s;saccn=%(saccn)s"
 
     print >>qcns_gff, qfmt %d
     print >>scns_gff, sfmt %d
