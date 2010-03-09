@@ -268,7 +268,7 @@ def get_pair(pair_file, fmt, seen={}):
             assert len(line) > 5, line
             key = tuple(line[:-1])
             pair = line[1], line[5]
-        elif fmt == 'cluster':
+        elif fmt in ('cluster', 'qa', 'raw'):
             assert len(line) == 5, line
             key = tuple(line[:-1])
             pair = line[1], line[3]
@@ -278,6 +278,9 @@ def get_pair(pair_file, fmt, seen={}):
             assert len(line) >= 2, "dont know how to handle %s" % line
             pair = line[0], line[1]
             key = tuple(line)
+
+        if fmt in ('qa', 'raw'):
+            pair = int(pair[0]), int(pair[1])
 
         if key in seen:
             continue
@@ -342,7 +345,7 @@ def main(qflat, sflat, pairs_file, pad, pair_fmt):
             if pair is None: return None
             if pair_fmt == 'dag':
                 qfeat, sfeat = qflat.d[pair[0]], sflat.d[pair[1]]
-            elif pair_fmt == 'cluster':
+            elif pair_fmt in ('cluster', 'raw', 'qa'):
                 # qseqid, qidx, sseqid, sidx
                 qfeat, sfeat = qflat[pair[0]], sflat[pair[1]]
             elif pair_fmt == 'pair':
@@ -392,8 +395,8 @@ if __name__ == "__main__":
     parser.add_option("-s", dest="sfasta", help="path to genomic subject fasta")
     parser.add_option("--sflat", dest="sflat", help="subject flat file")
     parser.add_option("-p", dest="pairs", help="the pairs file. output from dagchainer")
-    choices = ("dag", "cluster", "pair")
-    parser.add_option("--pair_fmt", dest="pair_fmt", default='dag',
+    choices = ("dag", "cluster", "pair", 'qa', 'raw')
+    parser.add_option("--pair_fmt", dest="pair_fmt", default='raw',
                       help="format of the pairs, one of: %s" % str(choices),
                       choices=choices)
     parser.add_option("--pad", dest="pad", type='int', default=12000,
