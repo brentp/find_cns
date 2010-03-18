@@ -4,8 +4,7 @@ import os.path as op
 import numpy as np
 import commands
 from shapely.geometry import Point, Polygon, LineString, MultiLineString
-sys.path.insert(0, "/opt/src/flatfeature")
-from flatfeature import Flat
+from flatfeature import Bed
 
 NCPU = 8
 from processing import Pool
@@ -14,19 +13,19 @@ pool = Pool(NCPU)
 
 EXPON = 0.90
 
-def get_feats_in_space(locs, ichr, bpmin, bpmax, flat):
+def get_feats_in_space(locs, ichr, bpmin, bpmax, bed):
     """ locs == [start, stop]
     bpmin is the lower extent of the window, bpmax ... 
     """
     assert bpmin < bpmax, (locs, ichr, bpmin, bpmax)
-    feats = flat.get_features_in_region(str(ichr), bpmin, bpmax)
+    feats = bed.get_features_in_region(str(ichr), bpmin, bpmax)
     feats = [f for f in feats if not (f['start'] == locs[0] and f['end'] == locs[1])]
     if len(feats) != 0:
         assert feats[0]['seqid'] == str(ichr)
     return [(f['start'], f['end'], f['accn']) for f in feats]
     
 
-def parse_blast(blast_str, orient, qfeat, sfeat, qflat, sflat, pad):
+def parse_blast(blast_str, orient, qfeat, sfeat, qbed, sbed, pad):
     blast = []
     slope = orient
 
@@ -67,8 +66,8 @@ def parse_blast(blast_str, orient, qfeat, sfeat, qflat, sflat, pad):
         yall = np.hstack((yy,yb[::-1], yy[0]))
 
     feats_nearby = {}
-    feats_nearby['q'] = get_feats_in_space(qgene, qfeat['seqid'], int(x.min()), int(x.max()), qflat)
-    feats_nearby['s'] = get_feats_in_space(sgene, sfeat['seqid'], int(y.min()), int(y.max()), sflat)
+    feats_nearby['q'] = get_feats_in_space(qgene, qfeat['seqid'], int(x.min()), int(x.max()), qbed)
+    feats_nearby['s'] = get_feats_in_space(sgene, sfeat['seqid'], int(y.min()), int(y.max()), sbed)
 
 
 
@@ -294,18 +293,18 @@ def get_pair(pair_file, fmt, seen={}):
             yield pair
 
 
-def get_masked_fastas(flat):
+def get_masked_fastas(bed):
     """
     create the masked fasta files per chromosome. needed to run bl2seq.
     """
-    f = flat.fasta.fasta_name
+    f = bed.fasta.fasta_name
     fname = op.splitext(op.basename(f))[0]
     d = op.dirname(f) + "/%s_split" % fname
     try: os.mkdir(d)
     except OSError: pass
 
     fastas = {}
-    for seqid, seq in flat.mask_cds():
+    for seqid, seq in bed.mask_cds():
         f = d + "/%s.fasta" % seqid
         fastas[seqid] = f
         if op.exists(f): continue
@@ -315,7 +314,7 @@ def get_masked_fastas(flat):
         fh.close()
     return fastas
 
-def main(qflat, sflat, pairs_file, pad, pair_fmt):
+def main(qbed, sbed, pairs_file, pad, pair_fmt):
     """main runner for finding cnss"""
 
      
@@ -327,8 +326,8 @@ def main(qflat, sflat, pairs_file, pad, pair_fmt):
     fcnss = sys.stdout
     print >> fcnss, "#qseqid,qaccn,sseqid,saccn,[qstart,qend,sstart,send...]"
 
-    qfastas = get_masked_fastas(qflat)
-    sfastas = get_masked_fastas(sflat)
+    qfastas = get_masked_fastas(qbed)
+    sfastas = get_masked_fastas(sbed)
 
     pairs = [True]
     _get_pair_gen = get_pair(pairs_file, pair_fmt)
@@ -344,16 +343,16 @@ def main(qflat, sflat, pairs_file, pad, pair_fmt):
         def get_cmd(pair):
             if pair is None: return None
             if pair_fmt == 'dag':
-                qfeat, sfeat = qflat.d[pair[0]], sflat.d[pair[1]]
+                qfeat, sfeat = qbed.d[pair[0]], sbed.d[pair[1]]
             elif pair_fmt in ('cluster', 'raw', 'qa'):
                 # qseqid, qidx, sseqid, sidx
-                qfeat, sfeat = qflat[pair[0]], sflat[pair[1]]
+                qfeat, sfeat = qbed[pair[0]], sbed[pair[1]]
             elif pair_fmt == 'pair':
                 qq, ss = pair
                 if isinstance(qq, int) and isinstance(ss, int):
-                    qfeat, sfeat = qflat[qq], sflat[ss]
+                    qfeat, sfeat = qbed[qq], sbed[ss]
                 else:
-                    qfeat, sfeat = qflat.d[qq], sflat.d[ss]
+                    qfeat, sfeat = qbed.d[qq], sbed.d[ss]
 
             qfasta = qfastas[qfeat['seqid']]
             sfasta = sfastas[sfeat['seqid']]
@@ -377,7 +376,7 @@ def main(qflat, sflat, pairs_file, pad, pair_fmt):
             print >>sys.stderr,  "%s %s" % (qfeat["accn"], sfeat['accn']),
             orient = qfeat['strand'] == sfeat['strand'] and 1 or -1
 
-            cnss = parse_blast(res, orient, qfeat, sfeat, qflat, sflat, pad)
+            cnss = parse_blast(res, orient, qfeat, sfeat, qbed, sbed, pad)
             print >>sys.stderr, "(%i)" % len(cnss)
             if len(cnss) == 0: continue
 
@@ -391,9 +390,9 @@ if __name__ == "__main__":
     import optparse
     parser = optparse.OptionParser("usage: %prog [options] ")
     parser.add_option("-q", dest="qfasta", help="path to genomic query fasta")
-    parser.add_option("--qflat", dest="qflat", help="query flat file")
+    parser.add_option("--qbed", dest="qbed", help="query bed file")
     parser.add_option("-s", dest="sfasta", help="path to genomic subject fasta")
-    parser.add_option("--sflat", dest="sflat", help="subject flat file")
+    parser.add_option("--sbed", dest="sbed", help="subject bed file")
     parser.add_option("-p", dest="pairs", help="the pairs file. output from dagchainer")
     choices = ("dag", "cluster", "pair", 'qa', 'raw')
     parser.add_option("--pair_fmt", dest="pair_fmt", default='raw',
@@ -404,10 +403,10 @@ if __name__ == "__main__":
     (options, _) = parser.parse_args()
 
 
-    if not (options.qfasta and options.sfasta and options.sflat and options.qflat):
+    if not (options.qfasta and options.sfasta and options.sbed and options.qbed):
         sys.exit(parser.print_help())
     
-    qflat = Flat(options.qflat, options.qfasta); qflat.fill_dict()
-    sflat = Flat(options.sflat, options.sfasta); sflat.fill_dict()
+    qbed = Bed(options.qbed, options.qfasta); qbed.fill_dict()
+    sbed = Bed(options.sbed, options.sfasta); sbed.fill_dict()
 
-    main(qflat, sflat, options.pairs, options.pad, options.pair_fmt)
+    main(qbed, sbed, options.pairs, options.pad, options.pair_fmt)
