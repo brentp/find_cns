@@ -261,36 +261,33 @@ def get_pair(pair_file, fmt, seen={}):
     dag, cluster, and pair formats."""
     fh = open(pair_file)
     for line in open(pair_file):
-        if line[0] == "#": seen.clear(); continue
+        if line[0] == "#": continue
         line = line.split("\t")
         if fmt == 'dag':
             assert len(line) > 5, line
-            key = tuple(line[:-1])
             pair = line[1], line[5]
         elif fmt in ('cluster', 'qa', 'raw'):
             assert len(line) == 5, line
-            key = tuple(line[:-1])
             pair = line[1], line[3]
         elif fmt == 'pairs':
             if len(line) == 1:
                 line = line.split(",")
             assert len(line) >= 2, "dont know how to handle %s" % line
             pair = line[0], line[1]
-            key = tuple(line)
 
         if fmt in ('qa', 'raw'):
             pair = int(pair[0]), int(pair[1])
-
-        if key in seen:
+        pair = tuple(pair)
+        if pair in seen:
             continue
         else:
-            seen[tuple(key)] = True
+            seen[pair] = True
             if isinstance(pair[0], (int, long)) and \
                            isinstance(pair[1], (int, long)):
                    yield int(pair[0]), int(pair[1])
-
-            assert len(pair) == 2, (pair, line)
-            yield pair
+            else:
+                assert len(pair) == 2, (pair, line)
+                yield pair
 
 
 def get_masked_fastas(bed):
