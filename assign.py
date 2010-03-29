@@ -1,5 +1,5 @@
 import collections
-from flatfeature import Flat
+from flatfeature import Bed
 import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
@@ -61,13 +61,13 @@ def get_start_stops(feat, cns):
     
     
 
-def get_nearby_features(feat, cns_start_stop, flat):
+def get_nearby_features(feat, cns_start_stop, bed):
     p0, p1 = get_start_stops(feat, cns_start_stop)
-    inters = flat.get_features_in_region(feat['seqid'], p0, p1)
+    inters = bed.get_features_in_region(feat['seqid'], p0, p1)
     return [f for f in inters if f["accn"] != feat["accn"]]
 
 
-def assign(cnsdict, qflat, sflat, qpair_map, spair_map):
+def assign(cnsdict, qbed, sbed, qpair_map, spair_map):
 
     for cnsinfo, accns in cnsdict.iteritems():
         cns = CNS(cnsinfo)
@@ -89,15 +89,16 @@ def assign(cnsdict, qflat, sflat, qpair_map, spair_map):
         feats = [] 
         for qaccn, saccn in accns:
             try:
-                feats.append((qflat.d[qaccn], sflat.d[saccn]))
+                feats.append((qbed.d[qaccn], sbed.d[saccn]))
             except KeyError:
-                print "skipped non top-level features:", qaccn, saccn
-                continue
+                print >>sys.stderr, "skipped non top-level features:", qaccn, saccn
+                raise
+                #continue
         feats.sort(cmp=dist_sort)
 
         for qfeat, sfeat in feats:
-            qint = get_nearby_features(qfeat, (cns.qstart, cns.qstop), qflat)
-            sint = get_nearby_features(sfeat, (cns.sstart, cns.sstop), sflat)
+            qint = get_nearby_features(qfeat, (cns.qstart, cns.qstop), qbed)
+            sint = get_nearby_features(sfeat, (cns.sstart, cns.sstop), sbed)
 
             if len(qint) + len(sint) > 3: continue
 
@@ -115,19 +116,21 @@ def assign(cnsdict, qflat, sflat, qpair_map, spair_map):
             break
         
         
-def main(cnsfile, qflat_file, sflat_file, pairsfile, pairs_fmt):
-    qcns_file = qflat_file.replace(".flat", "_cns.gff")
+def main(cnsfile, qbed_file, sbed_file, pairsfile, pairs_fmt):
+    qcns_file = qbed_file.replace(".bed", "_cns.gff")
+    assert qcns_file != qbed_file
     qcns_gff = open(qcns_file, 'w')
     print >>qcns_gff, "##gff-version 3"
-    if sflat_file != qflat_file:
-        scns_file = sflat_file.replace(".flat", "_cns.gff")
+    if sbed_file != qbed_file:
+        scns_file = sbed_file.replace(".bed", "_cns.gff")
+        assert scns_file != sbed_file
         scns_gff = open(scns_file, 'w')
         print >>scns_gff, "##gff-version 3"
     else:
         scns_gff = qcns_gff
     
-    qflat = Flat(qflat_file); qflat.fill_dict()
-    sflat = Flat(sflat_file); sflat.fill_dict()
+    qbed = Bed(qbed_file); qbed.fill_dict()
+    sbed = Bed(sbed_file); sbed.fill_dict()
 
 
     cnsdict = get_cns_dict(cnsfile)
@@ -138,7 +141,7 @@ def main(cnsfile, qflat_file, sflat_file, pairsfile, pairs_fmt):
                        "%(saccn)s,%(schr)s,%(sstart)i,%(sstop)i,%(sstrand)s"
 
     print >>out, "#" + fmt.replace("%(","").replace(")s","").replace(")i","")
-    for cns, qfeat, sfeat in assign(cnsdict, qflat, sflat, qpair_map, spair_map):
+    for cns, qfeat, sfeat in assign(cnsdict, qbed, sbed, qpair_map, spair_map):
         d = cns_fmt_dict(cns, qfeat, sfeat)
         d['cns_id'] = cns_id(d)
         if d['sstop'] < d['sstart']:
@@ -163,6 +166,7 @@ def make_pair_maps(pair_file, fmt):
     """
     qmap = collections.defaultdict(list) # key is query, value is a list of subject hits
     smap = collections.defaultdict(list)
+    print >>sys.stderr, "pair file:", pair_file
     for pair in get_pair(pair_file, fmt):
         if pair is None: break
         (qname, sname) = pair
@@ -178,20 +182,20 @@ if __name__ == "__main__":
 
     import optparse
     parser = optparse.OptionParser()
-    parser.add_option("--qflat", dest="qflat", help="flat file of the query")
-    parser.add_option("--sflat", dest="sflat", help="flat file of the subject")
+    parser.add_option("--qbed", dest="qbed", help="bed file of the query")
+    parser.add_option("--sbed", dest="sbed", help="bed file of the subject")
     parser.add_option("--cns", dest="cns", help="path to the cns file created by find_cns.py")
     parser.add_option("--pairs", dest="pairs", help="path pairs file")
-    choices = ("dag", "cluster", "pair")
+    choices = ("dag", "cluster", "pair", "qa")
     parser.add_option("--pair_fmt", dest="pair_fmt", default='dag',
                       help="format of the pairs, one of: %s" % str(choices),
                       choices=choices)
 
     (options, _) = parser.parse_args()
 
-    if not (options.qflat and options.sflat and options.cns and options.pairs):
+    if not (options.qbed and options.sbed and options.cns and options.pairs):
         sys.exit(parser.print_help())
 
-    res = main(options.cns, options.qflat, options.sflat,  options.pairs, options.pair_fmt)
+    res = main(options.cns, options.qbed, options.sbed,  options.pairs, options.pair_fmt)
 
 
