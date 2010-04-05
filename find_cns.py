@@ -262,14 +262,14 @@ def get_pair(pair_file, fmt, seen={}):
     fh = open(pair_file)
     for line in open(pair_file):
         if line[0] == "#": continue
-        line = line.split("\t")
+        line = line.strip().split("\t")
         if fmt == 'dag':
             assert len(line) > 5, line
             pair = line[1], line[5]
         elif fmt in ('cluster', 'qa', 'raw'):
             assert len(line) == 5, line
             pair = line[1], line[3]
-        elif fmt == 'pairs':
+        elif fmt == 'pair':
             if len(line) == 1:
                 line = line.split(",")
             assert len(line) >= 2, "dont know how to handle %s" % line
