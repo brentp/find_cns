@@ -15,7 +15,7 @@ EXPON = 0.90
 
 def get_feats_in_space(locs, ichr, bpmin, bpmax, bed):
     """ locs == [start, stop]
-    bpmin is the lower extent of the window, bpmax ... 
+    bpmin is the lower extent of the window, bpmax ...
     """
     assert bpmin < bpmax, (locs, ichr, bpmin, bpmax)
     feats = bed.get_features_in_region(str(ichr), bpmin, bpmax)
@@ -23,7 +23,7 @@ def get_feats_in_space(locs, ichr, bpmin, bpmax, bed):
     if len(feats) != 0:
         assert feats[0]['seqid'] == str(ichr)
     return [(f['start'], f['end'], f['accn']) for f in feats]
-    
+
 
 def parse_blast(blast_str, orient, qfeat, sfeat, qbed, sbed, pad):
     blast = []
@@ -72,7 +72,7 @@ def parse_blast(blast_str, orient, qfeat, sfeat, qbed, sbed, pad):
 
 
     genespace_poly = Polygon(zip(xall, yall))
-    
+
     for sub in ('q', 's'):
         if len(feats_nearby[sub]) !=0:
             feats_nearby[sub] = MultiLineString([[(0, c0),(0, c1)] for c0, c1, fname in feats_nearby[sub]])
@@ -92,7 +92,7 @@ def parse_blast(blast_str, orient, qfeat, sfeat, qbed, sbed, pad):
 
         xx = locs[:2]
         yy = locs[2:4]
-        
+
         # get rid of stuff on the wrong strand
         if slope == 1 and locs[2] > locs[3]: continue
         if slope == -1 and locs[2] < locs[3]: continue
@@ -107,12 +107,12 @@ def parse_blast(blast_str, orient, qfeat, sfeat, qbed, sbed, pad):
         yls = LineString([(0, locs[2]), (0, locs[3])])
 
         locs = tuple(locs) # make it hashable.
-        if qgene_poly.intersects(xls) and sgene_poly.intersects(yls): 
+        if qgene_poly.intersects(xls) and sgene_poly.intersects(yls):
             cnss.update((locs,))
             continue
 
         # has to be both or neither.
-        if qgene_poly.intersects(xls) or sgene_poly.intersects(yls): 
+        if qgene_poly.intersects(xls) or sgene_poly.intersects(yls):
             intronic_removed += 1
             continue
 
@@ -121,7 +121,7 @@ def parse_blast(blast_str, orient, qfeat, sfeat, qbed, sbed, pad):
         ###############################################################
         # for all other genes, if it's in an intron, we dont keep it.
         ###############################################################
-        intronic = False 
+        intronic = False
         # get rid of stuff that overlaps another gene:
         for sub, (start, stop) in (('q', locs[:2]), ('s', locs[2:4])):
             feats = feats_nearby[sub]
@@ -202,15 +202,15 @@ def remove_crossing_cnss(cnss, qgene, sgene):
 
 
     for csi in cns_shapes:
-        for csj in cns_shapes: 
+        for csj in cns_shapes:
             if csi == csj: continue
             if csi.crosses(csj):
                 csi.cross_list.update([csj])
                 csj.cross_list.update([csi])
 
-    ###################################################################### 
-    # first remove anything that cross more than 5 other cnss. 
-    ###################################################################### 
+    ######################################################################
+    # first remove anything that cross more than 5 other cnss.
+    ######################################################################
     nremoved = 0
     any_removed = True
     while any_removed:
@@ -228,17 +228,15 @@ def remove_crossing_cnss(cnss, qgene, sgene):
                 del cns_shapes[i]
                 break
 
-
-    ###################################################################### 
+    ######################################################################
     # then remove crosses one-by-one, keeping the < evalue, > bitscore.
-    ###################################################################### 
+    ######################################################################
     for csi in cns_shapes:
         if csi.do_remove or len(csi.cross_list) == 0: continue
         for csj in cns_shapes:
             if csj.do_remove or len(csj.cross_list) == 0: continue
             if csi.do_remove or len(csi.cross_list) == 0: continue
             if csi.crosses(csj):
-
                 # access the assocated cns.
                 # evalue: less is better       bitscore: more is better
                 if csi.cns[-2] < csj.cns[-2] or csi.cns[-1] > csj.cns[-1]:
@@ -254,9 +252,9 @@ def remove_crossing_cnss(cnss, qgene, sgene):
         if not c.do_remove: continue
         nremoved += 1
     return [c.cns for c in cns_shapes if not c.do_remove]
-        
 
-def get_pair(pair_file, fmt, seen={}):
+
+def get_pair(pair_file, fmt, qbed, sbed, seen={}):
     """ read a line and make sure it's unique handles
     dag, cluster, and pair formats."""
     fh = open(pair_file)
@@ -280,14 +278,11 @@ def get_pair(pair_file, fmt, seen={}):
         pair = tuple(pair)
         if pair in seen:
             continue
+        seen[pair] = True
+        if isinstance(pair[0], (int, long)):
+            yield qbed[pair[0]], sbed[pair[1]]
         else:
-            seen[pair] = True
-            if isinstance(pair[0], (int, long)) and \
-                           isinstance(pair[1], (int, long)):
-                   yield int(pair[0]), int(pair[1])
-            else:
-                assert len(pair) == 2, (pair, line)
-                yield pair
+            yield qbed.d[pair[0]], sbed.d[pair[1]]
 
 
 def get_masked_fastas(bed):
@@ -311,11 +306,12 @@ def get_masked_fastas(bed):
         fh.close()
     return fastas
 
-def main(qbed, sbed, pairs_file, pad, pair_fmt):
+def main(qbed, sbed, pairs_file, pad, pair_fmt, mask='F'):
     """main runner for finding cnss"""
 
-     
-    bl2seq = "/usr/bin/bl2seq -p blastn -D 1 -E 2 -q -2 -r 1 -G 5 -W 7 -F F " \
+
+    bl2seq = "/usr/bin/bl2seq " \
+           "-p blastn -D 1 -E 2 -q -2 -r 1 -G 5 -W 7 -F %s " % mask + \
            " -Y 812045000 -d 26195 -e 2.11 -i %(qfasta)s -j %(sfasta)s \
               -I %(qstart)d,%(qstop)d -J %(sstart)d,%(sstop)d | grep -v '#' \
             | grep -v 'WARNING' | grep -v 'ERROR' "
@@ -327,7 +323,7 @@ def main(qbed, sbed, pairs_file, pad, pair_fmt):
     sfastas = get_masked_fastas(sbed)
 
     pairs = [True]
-    _get_pair_gen = get_pair(pairs_file, pair_fmt)
+    _get_pair_gen = get_pair(pairs_file, pair_fmt, qbed, sbed)
     # need this for parallization stuff.
     def get_pair_gen():
         try: return _get_pair_gen.next()
@@ -339,17 +335,9 @@ def main(qbed, sbed, pairs_file, pad, pair_fmt):
         # this helps in parallelizing.
         def get_cmd(pair):
             if pair is None: return None
-            if pair_fmt == 'dag':
-                qfeat, sfeat = qbed.d[pair[0]], sbed.d[pair[1]]
-            elif pair_fmt in ('cluster', 'raw', 'qa'):
-                # qseqid, qidx, sseqid, sidx
-                qfeat, sfeat = qbed[pair[0]], sbed[pair[1]]
-            elif pair_fmt == 'pair':
-                qq, ss = pair
-                if isinstance(qq, int) and isinstance(ss, int):
-                    qfeat, sfeat = qbed[qq], sbed[ss]
-                else:
-                    qfeat, sfeat = qbed.d[qq], sbed.d[ss]
+            qfeat, sfeat = pair
+            #if qfeat['accn'] != "Bradi1g71480": return None
+            #print >>sys.stderr, qfeat, sfeat
 
             qfasta = qfastas[qfeat['seqid']]
             sfasta = sfastas[sfeat['seqid']]
@@ -381,11 +369,12 @@ def main(qbed, sbed, pairs_file, pad, pair_fmt):
             print >> fcnss, "%s,%s,%s,%s,%s" % (qfeat['seqid'], qname, sfeat['seqid'], sname,
                              ",".join(map(lambda l: ",".join(map(str,l)),cnss)))
 
-    return None 
+    return None
 
 if __name__ == "__main__":
     import optparse
     parser = optparse.OptionParser("usage: %prog [options] ")
+    parser.add_option("-F", dest="mask", help="blast mask simple sequence [default: F]", default="F")
     parser.add_option("-q", dest="qfasta", help="path to genomic query fasta")
     parser.add_option("--qbed", dest="qbed", help="query bed file")
     parser.add_option("-s", dest="sfasta", help="path to genomic subject fasta")
@@ -402,8 +391,9 @@ if __name__ == "__main__":
 
     if not (options.qfasta and options.sfasta and options.sbed and options.qbed):
         sys.exit(parser.print_help())
-    
+
     qbed = Bed(options.qbed, options.qfasta); qbed.fill_dict()
     sbed = Bed(options.sbed, options.sfasta); sbed.fill_dict()
+    assert options.mask in 'FT'
 
-    main(qbed, sbed, options.pairs, options.pad, options.pair_fmt)
+    main(qbed, sbed, options.pairs, options.pad, options.pair_fmt, options.mask)
