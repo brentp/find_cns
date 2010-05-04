@@ -134,7 +134,7 @@ def main(cnsfile, qbed_file, sbed_file, pairsfile, pairs_fmt):
 
 
     cnsdict = get_cns_dict(cnsfile)
-    qpair_map, spair_map = make_pair_maps(pairsfile, pairs_fmt)
+    qpair_map, spair_map = make_pair_maps(pairsfile, pairs_fmt, qbed, sbed)
     out = sys.stdout
 
     fmt = "%(cns_id)s,%(qaccn)s,%(qchr)s,%(qstart)i,%(qstop)i,%(qstrand)s," + \
@@ -160,14 +160,14 @@ def write_gff(d, qcns_gff, scns_gff):
     print >>qcns_gff, qfmt %d
     print >>scns_gff, sfmt %d
 
-def make_pair_maps(pair_file, fmt):
+def make_pair_maps(pair_file, fmt, qbed, sbed):
     """
     make dicts of q => s and s => q
     """
     qmap = collections.defaultdict(list) # key is query, value is a list of subject hits
     smap = collections.defaultdict(list)
     print >>sys.stderr, "pair file:", pair_file
-    for pair in get_pair(pair_file, fmt):
+    for pair in get_pair(pair_file, fmt, qbed, sbed):
         if pair is None: break
         (qname, sname) = pair
         qmap[qname].append(sname)
