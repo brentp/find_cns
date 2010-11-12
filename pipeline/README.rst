@@ -25,10 +25,12 @@ Requirements
 
  + `shapely` (``sudo apt-get install libgeos-dev``, ``sudo easy_install -UZ 'shapely==1.0.0'``)
 
+ + `processing` (``sudo easy_install -UZ processing``)
+
 Run
 ===
 
- + *Once only*: edit quota.sh to correct paths for ``lastz``, ``quota-alignment``
+ + *Once only*: edit quota.sh to correct path for ``quota-alignment``
  + for each organism, use export_to_bed.pl to get data out of CoGe. e.g.::
 
     perl scripts/export_to_bed.pl \
