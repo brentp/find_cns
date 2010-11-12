@@ -1,5 +1,4 @@
-QUOTA_DIR=/usr/local/src/quota-alignment/
-LASTZ=/usr/local/src/lastz/lastz-distrib-1.01.92/src/lastz
+QUOTA_DIR=/home/brentp/src/quota-alignment/
 
 
 # these are set from the command-line do not edit.
@@ -21,6 +20,7 @@ python -c "from flatfeature import Bed; b = Bed('${qprefix}.bed', '${qprefix}.fa
 python -c "from flatfeature import Bed; b = Bed('${sprefix}.bed', '${sprefix}.fasta'); b.cds_fasta(outfile='${sprefix}.features.fasta')";
 #
 #
+LASTZ=lastz
 python scripts/blastz.py -i ${qprefix}.features.fasta \
                  -d ${sprefix}.features.fasta \
                  -a $cpus \
